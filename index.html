@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KOReader Progress Viewer</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #0f172a;
+            --card: #111827;
+            --text: #e5e7eb;
+            --muted: #94a3b8;
+            --accent: #38bdf8;
+            --accent-2: #a855f7;
+            --border: #1f2937;
+            --good: #10b981;
+            --warn: #f59e0b;
+            --bad: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.12), transparent 35%),
+                radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.18), transparent 40%),
+                var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 40px 24px 80px;
+        }
+
+        .shell {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        p.lead {
+            margin: 0 0 18px;
+            color: var(--muted);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0 20px;
+        }
+
+        .controls .group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        button,
+        label.fake-btn {
+            border: 1px solid var(--border);
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.25));
+            color: var(--text);
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+
+        button:hover,
+        label.fake-btn:hover {
+            transform: translateY(-1px);
+            border-color: var(--accent);
+        }
+
+        button:active,
+        label.fake-btn:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: transparent;
+            border-style: dashed;
+            color: var(--muted);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .status {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--muted);
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        .cards {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 14px;
+        }
+
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 14px 12px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+        }
+
+        .card h3 {
+            margin: 0 0 8px;
+            font-size: 16px;
+        }
+
+        .path {
+            color: var(--muted);
+            font-size: 12px;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+
+        .progress-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .bar {
+            flex: 1;
+            height: 10px;
+            background: #1f2937;
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid #0f172a;
+        }
+
+        .fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        }
+
+        .percent {
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+        }
+
+        .meta {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 12px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            padding: 3px 8px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .warn {
+            border-color: var(--warn);
+            color: var(--warn);
+        }
+
+        .error {
+            border-color: var(--bad);
+            color: var(--bad);
+        }
+
+        .footer {
+            margin-top: 24px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding: 28px 18px 60px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shell">
+        <h1>KOReader Progress Viewer</h1>
+        <p class="lead">Pick a folder with your ebooks. The page pairs each .epub with KOReader sidecar data
+            (.sdr/metadata…lua) and optional .srt files, then shows your reading progress locally.</p>
+
+        <div class="controls">
+            <div class="group">
+                <button id="pickBtn">Pick local folder</button>
+                <label class="fake-btn" for="fallbackInput">Fallback picker</label>
+                <input type="file" id="fallbackInput" webkitdirectory multiple />
+                <span class="status-pill" id="supportInfo"></span>
+            </div>
+            <div class="group" style="flex:1; min-width:260px;">
+                <button id="dbAuthBtn">Connect Dropbox</button>
+                <input id="dbFolderPath" type="text" placeholder="/path/in/dropbox (default /)"
+                    style="flex:1; min-width:180px; padding:9px 10px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.04); color:var(--text);" />
+                <button id="dbScanBtn" class="secondary">Scan Dropbox</button>
+                <span class="status-pill" id="dbSupport"></span>
+            </div>
+        </div>
+
+        <div class="status" id="status">Ready. Use a button above to choose a folder. No files are uploaded; everything
+            stays on your device.</div>
+
+        <div id="results" class="cards"></div>
+
+        <div class="footer">
+            <div><strong>Notes:</strong> File System Access works best in Chromium browsers (Chrome, Edge) over HTTPS or
+                localhost. Fallback uses the directory upload input. Progress is read-only.</div>
+            <div>If you keep KOReader metadata in a central storage location, pick that folder instead of the book
+                folder.</div>
+            <div>Dropbox: set your app key in the script, ensure the redirect URI matches this page URL, then connect
+                and scan a folder.</div>
+        </div>
+    </div>
+
+    <script>
+        const pickBtn = document.getElementById('pickBtn');
+        const fallbackInput = document.getElementById('fallbackInput');
+        const resultsEl = document.getElementById('results');
+        const statusEl = document.getElementById('status');
+        const supportInfo = document.getElementById('supportInfo');
+        const dbAuthBtn = document.getElementById('dbAuthBtn');
+        const dbScanBtn = document.getElementById('dbScanBtn');
+        const dbSupport = document.getElementById('dbSupport');
+        const dbFolderPath = document.getElementById('dbFolderPath');
+
+        // Dropbox config: set your app key here and add the exact redirect URI in your Dropbox app console.
+        const DROPBOX_APP_KEY = 'YOUR_DROPBOX_APP_KEY';
+        const DROPBOX_REDIRECT_URI = window.location.origin + window.location.pathname;
+        const DROPBOX_AUTH_KEY = 'dbx_auth';
+
+        const hasFSA = 'showDirectoryPicker' in window;
+        supportInfo.textContent = hasFSA ? 'File System Access supported' : 'Using fallback input';
+        dbSupport.textContent = 'Dropbox: requires app key + HTTPS';
+
+        pickBtn.addEventListener('click', async () => {
+            if (!hasFSA) {
+                status('Your browser does not support File System Access. Use the fallback picker.');
+                return;
+            }
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                status('Reading folder…');
+                const entries = [];
+                await walkDir(dirHandle, '', entries);
+                await processEntries(entries);
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;
+                status('Error: ' + err.message, 'error');
+            }
+        });
+
+        fallbackInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            status('Reading folder (fallback)…');
+            const entries = files.map((file) => ({ path: file.webkitRelativePath || file.name, file }));
+            await processEntries(entries);
+            fallbackInput.value = '';
+        });
+
+        dbAuthBtn.addEventListener('click', () => {
+            if (!DROPBOX_APP_KEY || DROPBOX_APP_KEY === 'YOUR_DROPBOX_APP_KEY') {
+                alert('Set DROPBOX_APP_KEY in the script to your Dropbox app key.');
+                return;
+            }
+            startDropboxAuth();
+        });
+
+        dbScanBtn.addEventListener('click', async () => {
+            const auth = loadDropboxAuth();
+            if (!auth || !auth.accessToken) {
+                status('Connect to Dropbox first.', 'error');
+                return;
+            }
+            const path = (dbFolderPath.value && dbFolderPath.value.trim()) || '';
+            status('Listing Dropbox folder…');
+            try {
+                const entries = await listDropboxFiles(auth.accessToken, path);
+                const adapted = entries.map((e) => ({
+                    path: e.path_lower,
+                    displayPath: e.path_display,
+                    readText: () => downloadDropboxFile(auth.accessToken, e.path_lower)
+                }));
+                await processEntries(adapted);
+                status(`Done scanning Dropbox. Found ${adapted.length} files.`);
+            } catch (err) {
+                console.error(err);
+                status('Dropbox error: ' + err.message, 'error');
+            }
+        });
+
+        handleDropboxRedirect();
+
+        async function walkDir(dirHandle, prefix, sink) {
+            for await (const [name, handle] of dirHandle.entries()) {
+                const nextPath = prefix ? `${prefix}${name}` : name;
+                if (handle.kind === 'file') {
+                    sink.push({ path: nextPath, handle });
+                } else if (handle.kind === 'directory') {
+                    await walkDir(handle, `${nextPath}/`, sink);
+                }
+            }
+        }
+
+        async function processEntries(entries) {
+            if (!entries.length) {
+                status('No files found in that folder.');
+                resultsEl.innerHTML = '';
+                return;
+            }
+
+            const epubs = entries.filter((e) => e.path.toLowerCase().endsWith('.epub'));
+            const metadataFiles = entries.filter((e) => e.path.toLowerCase().includes('.sdr/') && e.path.toLowerCase().includes('metadata') && e.path.toLowerCase().endsWith('.lua'));
+            const srts = entries.filter((e) => e.path.toLowerCase().endsWith('.srt'));
+
+            if (!epubs.length) {
+                status('No .epub files found.');
+                resultsEl.innerHTML = '';
+                return;
+            }
+
+            status(`Found ${epubs.length} ebook(s). Parsing progress…`);
+
+            const metaMap = buildMetadataMap(metadataFiles);
+            const srtMap = buildSrtMap(srts);
+
+            const cards = [];
+            for (const epub of epubs) {
+                const card = await buildCard(epub, metaMap, srtMap);
+                cards.push(card);
+            }
+
+            renderCards(cards);
+            status(`Done. Showing ${cards.length} book(s).`);
+        }
+
+        function buildMetadataMap(metaEntries) {
+            const map = new Map();
+            for (const entry of metaEntries) {
+                const beforeSdr = entry.path.split('.sdr/')[0];
+                const base = stripExt(beforeSdr).toLowerCase();
+                if (!map.has(base)) map.set(base, entry);
+            }
+            return map;
+        }
+
+        function buildSrtMap(srtEntries) {
+            const map = new Map();
+            for (const entry of srtEntries) {
+                const base = stripExt(entry.path).toLowerCase();
+                if (!map.has(base)) map.set(base, entry);
+            }
+            return map;
+        }
+
+        async function buildCard(epubEntry, metaMap, srtMap) {
+            const epubBase = stripExt(epubEntry.path).toLowerCase();
+            const metaEntry = metaMap.get(epubBase);
+            const srtEntry = srtMap.get(epubBase);
+
+            let percent = null;
+            let source = null;
+            let rawMeta = null;
+
+            if (metaEntry) {
+                try {
+                    const text = await readText(metaEntry);
+                    rawMeta = text;
+                    const found = parseLuaPercent(text);
+                    if (found !== null) {
+                        percent = found * 100;
+                        source = 'KOReader metadata';
+                    }
+                } catch (err) {
+                    console.error('Failed to read metadata', err);
+                }
+            }
+
+            if (percent === null && srtEntry) {
+                try {
+                    const text = await readText(srtEntry);
+                    const found = parseSrtPercent(text);
+                    if (found !== null) {
+                        percent = found;
+                        source = 'SRT fallback';
+                    }
+                } catch (err) {
+                    console.error('Failed to read SRT', err);
+                }
+            }
+
+            const safePercent = percent !== null ? Math.max(0, Math.min(100, percent)) : null;
+            return { epubEntry, metaEntry, srtEntry, percent: safePercent, source, rawMeta };
+        }
+
+        function stripExt(path) {
+            const lastSlash = path.lastIndexOf('/') + 1;
+            const slashPart = path.slice(0, lastSlash);
+            const namePart = path.slice(lastSlash);
+            const dot = namePart.lastIndexOf('.');
+            const cleanName = dot > -1 ? namePart.slice(0, dot) : namePart;
+            return slashPart + cleanName;
+        }
+
+        async function readText(entry) {
+            if (entry.readText) {
+                return entry.readText();
+            }
+            if (entry.handle && entry.handle.getFile) {
+                const file = await entry.handle.getFile();
+                return file.text();
+            }
+            if (entry.file) {
+                return entry.file.text();
+            }
+            throw new Error('Unsupported entry type');
+        }
+
+        function displayPath(entry) {
+            return entry.displayPath || entry.path;
+        }
+
+        function parseLuaPercent(text) {
+            const match = /percent_finished\s*=\s*([0-9]+(?:\.[0-9]+)?)/i.exec(text);
+            if (!match) return null;
+            const value = parseFloat(match[1]);
+            if (Number.isNaN(value)) return null;
+            if (value <= 1) return value * 100; // Sometimes stored 0-1
+            return value;
+        }
+
+        function parseSrtPercent(text) {
+            const match = /(\d{1,3})\s*%/.exec(text);
+            if (!match) return null;
+            const value = parseInt(match[1], 10);
+            if (Number.isNaN(value)) return null;
+            return value;
+        }
+
+        function renderCards(cards) {
+            if (!cards.length) {
+                resultsEl.innerHTML = '';
+                return;
+            }
+            resultsEl.innerHTML = cards.map((c) => {
+                const percent = c.percent !== null ? c.percent.toFixed(1) + '%' : 'Unknown';
+                const fill = c.percent !== null ? Math.min(100, c.percent) : 0;
+                const statusClass = c.percent === null ? 'warn' : '';
+                const source = c.source || 'Not found';
+                const epubPath = displayPath(c.epubEntry);
+                return `
+          <div class="card">
+            <h3>${escapeHtml(titleFromPath(epubPath))}</h3>
+            <div class="path">${escapeHtml(epubPath)}</div>
+            <div class="progress-row">
+              <div class="bar"><div class="fill" style="width:${fill}%;"></div></div>
+              <div class="percent">${percent}</div>
+            </div>
+            <div class="meta">
+              <span class="pill ${statusClass}">${escapeHtml(source)}</span>
+              ${c.metaEntry ? `<span class="pill">metadata: ${escapeHtml(displayPath(c.metaEntry))}</span>` : ''}
+              ${c.srtEntry ? `<span class="pill">srt: ${escapeHtml(displayPath(c.srtEntry))}</span>` : ''}
+            </div>
+          </div>
+        `;
+            }).join('');
+        }
+
+        function titleFromPath(path) {
+            const parts = path.split('/');
+            const name = parts[parts.length - 1];
+            return name.replace(/\.epub$/i, '');
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function status(msg, level = 'info') {
+            statusEl.textContent = msg;
+            statusEl.classList.toggle('error', level === 'error');
+        }
+
+        // Dropbox OAuth (PKCE) helpers
+        function loadDropboxAuth() {
+            try {
+                return JSON.parse(localStorage.getItem(DROPBOX_AUTH_KEY) || 'null');
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function saveDropboxAuth(auth) {
+            localStorage.setItem(DROPBOX_AUTH_KEY, JSON.stringify(auth));
+        }
+
+        function clearDropboxAuth() {
+            localStorage.removeItem(DROPBOX_AUTH_KEY);
+        }
+
+        async function startDropboxAuth() {
+            const codeVerifier = generateCodeVerifier();
+            const codeChallenge = await pkceChallenge(codeVerifier);
+            sessionStorage.setItem('dbx_code_verifier', codeVerifier);
+            const params = new URLSearchParams({
+                client_id: DROPBOX_APP_KEY,
+                response_type: 'code',
+                code_challenge: codeChallenge,
+                code_challenge_method: 'S256',
+                redirect_uri: DROPBOX_REDIRECT_URI,
+                token_access_type: 'online'
+            });
+            window.location.href = `https://www.dropbox.com/oauth2/authorize?${params.toString()}`;
+        }
+
+        async function handleDropboxRedirect() {
+            const url = new URL(window.location.href);
+            const code = url.searchParams.get('code');
+            const error = url.searchParams.get('error');
+            if (error) {
+                status('Dropbox auth error: ' + error, 'error');
+                return;
+            }
+            if (!code) return;
+            const verifier = sessionStorage.getItem('dbx_code_verifier');
+            sessionStorage.removeItem('dbx_code_verifier');
+            if (!verifier) {
+                status('Missing PKCE verifier. Start auth again.', 'error');
+                return;
+            }
+            try {
+                const token = await exchangeDropboxCode(code, verifier);
+                saveDropboxAuth(token);
+                status('Dropbox connected.');
+                url.searchParams.delete('code');
+                url.searchParams.delete('state');
+                window.history.replaceState({}, document.title, url.toString());
+            } catch (err) {
+                status('Dropbox token error: ' + err.message, 'error');
+            }
+        }
+
+        async function exchangeDropboxCode(code, verifier) {
+            const body = new URLSearchParams({
+                code,
+                grant_type: 'authorization_code',
+                client_id: DROPBOX_APP_KEY,
+                code_verifier: verifier,
+                redirect_uri: DROPBOX_REDIRECT_URI
+            });
+            const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error('Token request failed: ' + text);
+            }
+            const data = await res.json();
+            return {
+                accessToken: data.access_token,
+                expiresAt: Date.now() + (data.expires_in || 0) * 1000,
+                accountId: data.account_id,
+                uid: data.uid
+            };
+        }
+
+        async function listDropboxFiles(token, path) {
+            const entries = [];
+            let cursor = null;
+            const first = await dropboxApi(token, 'https://api.dropboxapi.com/2/files/list_folder', {
+                path: path || '',
+                recursive: true,
+                include_non_downloadable_files: false
+            });
+            entries.push(...(first.entries || []).filter((e) => e['.tag'] === 'file'));
+            cursor = first.cursor;
+            let hasMore = first.has_more;
+            while (hasMore && cursor) {
+                const next = await dropboxApi(token, 'https://api.dropboxapi.com/2/files/list_folder/continue', { cursor });
+                entries.push(...(next.entries || []).filter((e) => e['.tag'] === 'file'));
+                cursor = next.cursor;
+                hasMore = next.has_more;
+            }
+            return entries;
+        }
+
+        async function downloadDropboxFile(token, path) {
+            const res = await fetch('https://content.dropboxapi.com/2/files/download', {
+                method: 'POST',
+                headers: {
+                    Authorization: 'Bearer ' + token,
+                    'Dropbox-API-Arg': JSON.stringify({ path })
+                }
+            });
+            if (!res.ok) throw new Error('Download failed: ' + res.status);
+            return res.text();
+        }
+
+        async function dropboxApi(token, url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify(body || {})
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || ('HTTP ' + res.status));
+            }
+            return res.json();
+        }
+
+        function generateCodeVerifier() {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return base64Url(array);
+        }
+
+        async function pkceChallenge(verifier) {
+            const data = new TextEncoder().encode(verifier);
+            const digest = await crypto.subtle.digest('SHA-256', data);
+            return base64Url(new Uint8Array(digest));
+        }
+
+        function base64Url(bytes) {
+            return btoa(String.fromCharCode(...bytes))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
+    </script>
+</body>
+
+</html>
